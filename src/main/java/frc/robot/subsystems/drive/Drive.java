@@ -160,7 +160,7 @@ public class Drive extends SubsystemBase {
    */
   public void runVelocity(ChassisVelocities speeds) {
     // Calculate module setpoints
-    ChassisVelocities discreteSpeeds = speeds.discretize(0.02);
+    ChassisVelocities discreteSpeeds = speeds.discretize(Constants.ROBOT_PERIOD);
     SwerveModuleVelocity[] setpointStates = kinematics.toSwerveModuleVelocities(discreteSpeeds);
     setpointStates =
         SwerveDriveKinematics.desaturateWheelVelocities(
