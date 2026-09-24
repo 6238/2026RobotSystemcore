@@ -15,6 +15,8 @@ import org.wpilib.framework.RobotBase;
  * (log replay from a file).
  */
 public final class Constants {
+  public static final double ROBOT_PERIOD = 0.01;
+
   public static final Mode simMode = Mode.SIM;
   public static final Mode currentMode = RobotBase.isReal() ? Mode.REAL : simMode;
 
