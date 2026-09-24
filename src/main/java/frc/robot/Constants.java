@@ -1,10 +1,3 @@
-// Copyright (c) 2021-2026 Littleton Robotics
-// http://github.com/Mechanical-Advantage
-//
-// Use of this source code is governed by a BSD
-// license that can be found in the LICENSE file
-// at the root directory of this project.
-
 package frc.robot;
 
 import org.wpilib.framework.RobotBase;
@@ -15,6 +8,8 @@ import org.wpilib.framework.RobotBase;
  * (log replay from a file).
  */
 public final class Constants {
+  public static final double ROBOT_PERIOD = 0.01;
+
   public static final Mode simMode = Mode.SIM;
   public static final Mode currentMode = RobotBase.isReal() ? Mode.REAL : simMode;
 

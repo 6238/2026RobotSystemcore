@@ -1,10 +1,3 @@
-// Copyright (c) 2021-2026 Littleton Robotics
-// http://github.com/Mechanical-Advantage
-//
-// Use of this source code is governed by a BSD
-// license that can be found in the LICENSE file
-// at the root directory of this project.
-
 package frc.robot;
 
 import frc.robot.generated.TunerConstants;
@@ -37,6 +30,9 @@ public class Robot extends OpModeRobot {
   public final CommandXboxController controller = new CommandXboxController(0);
 
   public Robot() {
+    // enable 100hz
+    super(Constants.ROBOT_PERIOD);
+
     // Record metadata
     Logger.recordMetadata("ProjectName", BuildConstants.MAVEN_NAME);
     Logger.recordMetadata("BuildDate", BuildConstants.BUILD_DATE);
@@ -72,14 +68,12 @@ public class Robot extends OpModeRobot {
         break;
     }
 
-    // LoggedRobot is not used; OpModeRobot owns the main loop.
+    // Advantage Kit by default does not work with OPModeRobot, as it wants us to use LoggedRobot
     Logger.AdvancedHooks.disableRobotBaseCheck();
     Logger.start();
 
     switch (Constants.currentMode) {
       case REAL:
-        // ModuleIOTalonFX is intended for modules with TalonFX drive, TalonFX turn, and a
-        // CANcoder.
         drive =
             new Drive(
                 new GyroIOPigeon2(),
