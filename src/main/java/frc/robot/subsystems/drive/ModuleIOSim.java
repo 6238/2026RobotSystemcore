@@ -35,6 +35,7 @@ public class ModuleIOSim implements ModuleIO {
   private static final double DRIVE_KV_ROT =
       0.91035; // Same units as TunerConstants: (volt * secs) / rotation
   private static final double DRIVE_KV = 1.0 / Units.rotationsToRadians(1.0 / DRIVE_KV_ROT);
+  private static final double DRIVE_KA = 0.0;
   private static final double TURN_KP = 8.0;
   private static final double TURN_KD = 0.0;
   private static final DCMotor DRIVE_GEARBOX = DCMotor.getKrakenX60Foc(1);
@@ -124,14 +125,17 @@ public class ModuleIOSim implements ModuleIO {
   }
 
   @Override
-  public void setDriveVelocity(double velocityRadPerSec) {
+  public void setDriveVelocity(double velocityRadPerSec, double accelerationRadPerSecSq) {
     driveClosedLoop = true;
-    driveFFVolts = DRIVE_KS * Math.signum(velocityRadPerSec) + DRIVE_KV * velocityRadPerSec;
+    driveFFVolts =
+        DRIVE_KS * Math.signum(velocityRadPerSec)
+            + DRIVE_KV * velocityRadPerSec
+            + DRIVE_KA * accelerationRadPerSecSq;
     driveController.setSetpoint(velocityRadPerSec);
   }
 
   @Override
-  public void setTurnPosition(Rotation2d rotation) {
+  public void setTurnPosition(Rotation2d rotation, double velocityRadPerSec) {
     turnClosedLoop = true;
     turnController.setSetpoint(rotation.getRadians());
   }

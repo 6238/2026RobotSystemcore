@@ -239,13 +239,20 @@ public class ModuleIOTalonFXS implements ModuleIO {
   }
 
   @Override
-  public void setDriveVelocity(double velocityRadPerSec) {
+  public void setDriveVelocity(double velocityRadPerSec, double accelerationRadPerSecSq) {
     double velocityRotPerSec = Units.radiansToRotations(velocityRadPerSec);
-    driveTalon.setControl(velocityVoltageRequest.withVelocity(velocityRotPerSec));
+    double accelerationRotPerSecSq = Units.radiansToRotations(accelerationRadPerSecSq);
+    driveTalon.setControl(
+        velocityVoltageRequest
+            .withVelocity(velocityRotPerSec)
+            .withAcceleration(accelerationRotPerSecSq));
   }
 
   @Override
-  public void setTurnPosition(Rotation2d rotation) {
-    turnTalon.setControl(positionVoltageRequest.withPosition(rotation.getRotations()));
+  public void setTurnPosition(Rotation2d rotation, double velocityRadPerSec) {
+    turnTalon.setControl(
+        positionVoltageRequest
+            .withPosition(rotation.getRotations())
+            .withVelocity(Units.radiansToRotations(velocityRadPerSec)));
   }
 }

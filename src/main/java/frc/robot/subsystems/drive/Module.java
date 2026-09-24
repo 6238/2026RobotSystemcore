@@ -78,11 +78,18 @@ public class Module {
     turnEncoderDisconnectedAlert.set(!inputs.turnEncoderConnected);
   }
 
-  /** Runs the module with the specified setpoint state. Returns the optimized setpoint. */
-  public SwerveModuleVelocity runSetpoint(SwerveModuleVelocity state) {
+  /**
+   * Runs the module at a setpoint the generator already limited. Acceleration and azimuth rate are
+   * the feedforward for that step. cosineScale still backs off while the wheel is short of the
+   * commanded angle.
+   */
+  public SwerveModuleVelocity runSetpoint(
+      SwerveModuleVelocity state, double accelerationMetersPerSecSq, double turnVelocityRadPerSec) {
     SwerveModuleVelocity optimized = state.optimize(getAngle()).cosineScale(inputs.turnPosition);
-    io.setDriveVelocity(optimized.velocity / constants.WheelRadius);
-    io.setTurnPosition(optimized.angle);
+    io.setDriveVelocity(
+        optimized.velocity / constants.WheelRadius,
+        accelerationMetersPerSecSq / constants.WheelRadius);
+    io.setTurnPosition(optimized.angle, turnVelocityRadPerSec);
     return optimized;
   }
 
@@ -141,5 +148,10 @@ public class Module {
   /** Returns the module velocity in rotations/sec (Phoenix native units). */
   public double getFFCharacterizationVelocity() {
     return Units.radiansToRotations(inputs.driveVelocityRadPerSec);
+  }
+
+  /** Returns the voltage applied to the drive motor. */
+  public double getDriveAppliedVolts() {
+    return inputs.driveAppliedVolts;
   }
 }

@@ -244,22 +244,35 @@ public class ModuleIOTalonFX implements ModuleIO {
   }
 
   @Override
-  public void setDriveVelocity(double velocityRadPerSec) {
+  public void setDriveVelocity(double velocityRadPerSec, double accelerationRadPerSecSq) {
     double velocityRotPerSec = Units.radiansToRotations(velocityRadPerSec);
+    double accelerationRotPerSecSq = Units.radiansToRotations(accelerationRadPerSecSq);
     driveTalon.setControl(
         switch (constants.DriveMotorClosedLoopOutput) {
-          case Voltage -> velocityVoltageRequest.withVelocity(velocityRotPerSec);
-          case TorqueCurrentFOC -> velocityTorqueCurrentRequest.withVelocity(velocityRotPerSec);
+          case Voltage ->
+              velocityVoltageRequest
+                  .withVelocity(velocityRotPerSec)
+                  .withAcceleration(accelerationRotPerSecSq);
+          case TorqueCurrentFOC ->
+              velocityTorqueCurrentRequest
+                  .withVelocity(velocityRotPerSec)
+                  .withAcceleration(accelerationRotPerSecSq);
         });
   }
 
   @Override
-  public void setTurnPosition(Rotation2d rotation) {
+  public void setTurnPosition(Rotation2d rotation, double velocityRadPerSec) {
+    double velocityRotPerSec = Units.radiansToRotations(velocityRadPerSec);
     turnTalon.setControl(
         switch (constants.SteerMotorClosedLoopOutput) {
-          case Voltage -> positionVoltageRequest.withPosition(rotation.getRotations());
+          case Voltage ->
+              positionVoltageRequest
+                  .withPosition(rotation.getRotations())
+                  .withVelocity(velocityRotPerSec);
           case TorqueCurrentFOC ->
-              positionTorqueCurrentRequest.withPosition(rotation.getRotations());
+              positionTorqueCurrentRequest
+                  .withPosition(rotation.getRotations())
+                  .withVelocity(velocityRotPerSec);
         });
   }
 }

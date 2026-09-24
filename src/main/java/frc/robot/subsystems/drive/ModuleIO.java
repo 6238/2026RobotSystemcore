@@ -44,6 +44,19 @@ public interface ModuleIO {
   /** Run the drive motor at the specified velocity. */
   public default void setDriveVelocity(double velocityRadPerSec) {}
 
+  /**
+   * Run the drive motor at the specified velocity, with acceleration feedforward in radians per
+   * second squared at the wheel.
+   */
+  public default void setDriveVelocity(double velocityRadPerSec, double accelerationRadPerSecSq) {
+    setDriveVelocity(velocityRadPerSec);
+  }
+
   /** Run the turn motor to the specified rotation. */
   public default void setTurnPosition(Rotation2d rotation) {}
+
+  /** Run the turn motor to the specified rotation with a velocity feedforward. */
+  public default void setTurnPosition(Rotation2d rotation, double velocityRadPerSec) {
+    setTurnPosition(rotation);
+  }
 }

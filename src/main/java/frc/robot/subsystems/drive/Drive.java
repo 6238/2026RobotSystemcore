@@ -99,8 +99,19 @@ public class Drive extends SubsystemBase {
                 null,
                 (state) -> Logger.recordOutput("Drive/SysIdState", state.toString())),
             new SysIdRoutine.Mechanism(
-                (voltage) -> runCharacterization(voltage.in(Volts)), null, this));
+                (voltage) -> runCharacterization(voltage.in(Volts)),
+                (log) -> {
+                  for (int i = 0; i < modules.length; i++) {
+                    log.motor("module-" + i)
+                        .voltage(Volts.of(modules[i].getDriveAppliedVolts()))
+                        .linearPosition(Meters.of(modules[i].getPositionMeters()))
+                        .linearVelocity(MetersPerSecond.of(modules[i].getVelocityMetersPerSec()));
+                  }
+                },
+                this));
   }
+
+  private SwerveModuleVelocity[] previousSetpoints;
 
   @Override
   public void periodic() {
@@ -117,6 +128,7 @@ public class Drive extends SubsystemBase {
       for (var module : modules) {
         module.stop();
       }
+      previousSetpoints = null;
     }
 
     // Log empty setpoint states when disabled
@@ -166,24 +178,35 @@ public class Drive extends SubsystemBase {
    * @param speeds Speeds in meters/sec
    */
   public void runVelocity(ChassisVelocities speeds) {
-    // Calculate module setpoints
-    ChassisVelocities discreteSpeeds = speeds.discretize(0.02);
-    SwerveModuleVelocity[] setpointStates = kinematics.toSwerveModuleVelocities(discreteSpeeds);
-    setpointStates =
-        SwerveDriveKinematics.desaturateWheelVelocities(
-            setpointStates, TunerConstants.kSpeedAt12Volts);
-
-    // Log unoptimized setpoints and setpoint speeds
-    Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
-    Logger.recordOutput("SwerveChassisSpeeds/Setpoints", discreteSpeeds);
-
-    // Send setpoints to modules
-    for (int i = 0; i < 4; i++) {
-      setpointStates[i] = modules[i].runSetpoint(setpointStates[i]);
+    double dt = 0.02;
+    ChassisVelocities discreteSpeeds = speeds.discretize(dt);
+    if (previousSetpoints == null) {
+      previousSetpoints = getModuleStates();
     }
+    SwerveSetpointGenerator.Constraints constraints =
+        new SwerveSetpointGenerator.Constraints(
+            getMaxLinearSpeedMetersPerSec(),
+            // Starting traction cap. Replace with the measured slip acceleration.
+            10.0,
+            // Azimuth rate the generator will spend while a module is still turning.
+            12.0);
+    SwerveSetpointGenerator.Setpoint setpoint =
+        SwerveSetpointGenerator.generate(
+            kinematics, previousSetpoints, discreteSpeeds, constraints, dt);
 
-    // Log optimized setpoints (runSetpoint mutates each state)
-    Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
+    Logger.recordOutput("SwerveStates/Setpoints", setpoint.modules());
+    Logger.recordOutput("SwerveChassisSpeeds/Setpoints", setpoint.chassis());
+
+    SwerveModuleVelocity[] optimized = new SwerveModuleVelocity[4];
+    for (int i = 0; i < 4; i++) {
+      double acceleration = (setpoint.modules()[i].velocity - previousSetpoints[i].velocity) / dt;
+      double turnVelocity =
+          setpoint.modules()[i].angle.minus(previousSetpoints[i].angle).getRadians() / dt;
+      optimized[i] = modules[i].runSetpoint(setpoint.modules()[i], acceleration, turnVelocity);
+    }
+    previousSetpoints = setpoint.modules();
+
+    Logger.recordOutput("SwerveStates/SetpointsOptimized", optimized);
   }
 
   /** Runs the drive in a straight line with the specified drive output. */
