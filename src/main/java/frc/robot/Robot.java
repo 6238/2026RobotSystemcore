@@ -16,6 +16,8 @@ import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import org.wpilib.command2.CommandScheduler;
 import org.wpilib.command2.button.CommandXboxController;
 import org.wpilib.framework.OpModeRobot;
+import org.wpilib.hardware.bus.CANPort;
+import org.wpilib.hardware.power.PowerDistribution;
 import org.wpilib.system.RobotController;
 
 /**
@@ -28,6 +30,7 @@ import org.wpilib.system.RobotController;
 public class Robot extends OpModeRobot {
   public final Drive drive;
   public final CommandXboxController controller = new CommandXboxController(0);
+  private PowerDistribution pdh;
 
   public Robot() {
     // enable 100hz
@@ -74,6 +77,7 @@ public class Robot extends OpModeRobot {
 
     switch (Constants.currentMode) {
       case REAL:
+        pdh = new PowerDistribution(CANPort.CAN_S1, 9, PowerDistribution.ModuleType.REV);
         drive =
             new Drive(
                 new GyroIOPigeon2(),
@@ -117,6 +121,11 @@ public class Robot extends OpModeRobot {
     // commands, running already-scheduled commands, removing finished or interrupted commands,
     // and running subsystem periodic() methods.
     CommandScheduler.getInstance().run();
+
+    if (pdh != null) {
+      Logger.recordOutput("PDH/Voltage", pdh.getVoltage());
+      Logger.recordOutput("PDH/TotalCurrent", pdh.getTotalCurrent());
+    }
 
     long userEnd = RobotController.getMonotonicTime();
     Logger.AdvancedHooks.invokePeriodicAfterUser(userEnd - userStart, userStart - beforeStart);
