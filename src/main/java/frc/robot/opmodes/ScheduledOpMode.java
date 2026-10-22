@@ -1,10 +1,13 @@
 package frc.robot.opmodes;
 
-import org.wpilib.command2.Command;
-import org.wpilib.command2.CommandScheduler;
+import org.wpilib.command3.Command;
+import org.wpilib.command3.Scheduler;
 import org.wpilib.opmode.PeriodicOpMode;
 
-/** Runs one command while the OpMode is enabled, and cancels it when the OpMode ends. */
+/**
+ * Runs one command while the OpMode is enabled, and cancels it when the OpMode ends. Commands v3
+ * also cancels it if the OpMode is deselected, since it was scheduled inside the OpMode's scope.
+ */
 abstract class ScheduledOpMode extends PeriodicOpMode {
   private final Command command;
 
@@ -14,11 +17,11 @@ abstract class ScheduledOpMode extends PeriodicOpMode {
 
   @Override
   public void start() {
-    CommandScheduler.getInstance().schedule(command);
+    Scheduler.getDefault().schedule(command);
   }
 
   @Override
   public void end() {
-    command.cancel();
+    Scheduler.getDefault().cancel(command);
   }
 }

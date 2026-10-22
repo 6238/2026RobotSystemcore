@@ -1,23 +1,13 @@
 package frc.robot;
 
-import frc.robot.generated.TunerConstants;
-import frc.robot.subsystems.drive.Drive;
-import frc.robot.subsystems.drive.GyroIO;
-import frc.robot.subsystems.drive.GyroIOPigeon2;
-import frc.robot.subsystems.drive.ModuleIO;
-import frc.robot.subsystems.drive.ModuleIOSim;
-import frc.robot.subsystems.drive.ModuleIOTalonFX;
 import org.littletonrobotics.junction.AutoLogOutputManager;
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
-import org.wpilib.command2.CommandScheduler;
-import org.wpilib.command2.button.CommandXboxController;
+import org.wpilib.command3.Scheduler;
 import org.wpilib.framework.OpModeRobot;
-import org.wpilib.hardware.bus.CANPort;
-import org.wpilib.hardware.power.PowerDistribution;
 import org.wpilib.system.RobotController;
 
 /**
@@ -28,9 +18,7 @@ import org.wpilib.system.RobotController;
  * package and its subpackages are registered automatically.
  */
 public class Robot extends OpModeRobot {
-  public final Drive drive;
-  public final CommandXboxController controller = new CommandXboxController(0);
-  private PowerDistribution pdh;
+  public final RobotContainer container;
 
   public Robot() {
     // enable 100hz
@@ -75,38 +63,7 @@ public class Robot extends OpModeRobot {
     Logger.AdvancedHooks.disableRobotBaseCheck();
     Logger.start();
 
-    switch (Constants.currentMode) {
-      case REAL:
-        pdh = new PowerDistribution(CANPort.CAN_S1, 9, PowerDistribution.ModuleType.REV);
-        drive =
-            new Drive(
-                new GyroIOPigeon2(),
-                new ModuleIOTalonFX(TunerConstants.FrontLeft),
-                new ModuleIOTalonFX(TunerConstants.FrontRight),
-                new ModuleIOTalonFX(TunerConstants.BackLeft),
-                new ModuleIOTalonFX(TunerConstants.BackRight));
-        break;
-
-      case SIM:
-        drive =
-            new Drive(
-                new GyroIO() {},
-                new ModuleIOSim(TunerConstants.FrontLeft),
-                new ModuleIOSim(TunerConstants.FrontRight),
-                new ModuleIOSim(TunerConstants.BackLeft),
-                new ModuleIOSim(TunerConstants.BackRight));
-        break;
-
-      default:
-        drive =
-            new Drive(
-                new GyroIO() {},
-                new ModuleIO() {},
-                new ModuleIO() {},
-                new ModuleIO() {},
-                new ModuleIO() {});
-        break;
-    }
+    container = new RobotContainer();
 
     AutoLogOutputManager.addObject(this);
   }
@@ -117,15 +74,17 @@ public class Robot extends OpModeRobot {
     Logger.AdvancedHooks.invokePeriodicBeforeUser();
     long userStart = RobotController.getMonotonicTime();
 
-    // Runs the Scheduler. This is responsible for polling buttons, adding newly-scheduled
-    // commands, running already-scheduled commands, removing finished or interrupted commands,
-    // and running subsystem periodic() methods.
-    CommandScheduler.getInstance().run();
+    // Update mechanism inputs and odometry first so commands see this loop's data. Vision runs
+    // after drive so its measurements land on the newest odometry.
+    container.drive.periodic();
+    container.vision.periodic();
+    container.shooter.periodic();
 
-    if (pdh != null) {
-      Logger.recordOutput("PDH/Voltage", pdh.getVoltage());
-      Logger.recordOutput("PDH/TotalCurrent", pdh.getTotalCurrent());
-    }
+    // Runs the Scheduler. This is responsible for polling buttons, queuing default commands, and
+    // running scheduled commands until they yield.
+    Scheduler.getDefault().run();
+
+    container.periodic();
 
     long userEnd = RobotController.getMonotonicTime();
     Logger.AdvancedHooks.invokePeriodicAfterUser(userEnd - userStart, userStart - beforeStart);

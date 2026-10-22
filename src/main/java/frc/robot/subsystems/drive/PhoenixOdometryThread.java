@@ -2,7 +2,7 @@ package frc.robot.subsystems.drive;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;
-import frc.robot.generated.TunerConstants;
+import frc.robot.util.RobotIdentity;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -30,7 +30,7 @@ public class PhoenixOdometryThread extends Thread {
   private final List<Queue<Double>> genericQueues = new ArrayList<>();
   private final List<Queue<Double>> timestampQueues = new ArrayList<>();
 
-  private static boolean isCANFD = TunerConstants.kCANBus.isNetworkFD();
+  private static boolean isCANFD = RobotIdentity.getTunerConstants().kCANBus.isNetworkFD();
   private static PhoenixOdometryThread instance = null;
 
   public static PhoenixOdometryThread getInstance() {

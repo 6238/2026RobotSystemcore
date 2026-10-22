@@ -38,5 +38,13 @@ public interface ModuleIO {
   public default void setDriveVelocity(double velocityRadPerSec) {}
 
   /** Run the turn motor to the specified rotation. */
-  public default void setTurnPosition(Rotation2d rotation) {}
+  public default void setTurnPosition(Rotation2d rotation) {
+    setTurnPosition(rotation, 0.0);
+  }
+
+  /**
+   * Run the turn motor to the specified rotation. {@code velocityRadPerSec} is the feedforward rate
+   * of that setpoint (mechanism radians / sec).
+   */
+  public default void setTurnPosition(Rotation2d rotation, double velocityRadPerSec) {}
 }

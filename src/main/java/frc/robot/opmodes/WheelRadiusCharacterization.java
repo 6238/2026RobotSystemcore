@@ -7,6 +7,6 @@ import org.wpilib.opmode.Utility;
 @Utility(name = "Wheel Radius Characterization", group = "Drive")
 public class WheelRadiusCharacterization extends ScheduledOpMode {
   public WheelRadiusCharacterization(Robot robot) {
-    super(DriveCommands.wheelRadiusCharacterization(robot.drive));
+    super(DriveCommands.wheelRadiusCharacterization(robot.container.drive));
   }
 }

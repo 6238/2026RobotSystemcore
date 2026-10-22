@@ -3,6 +3,7 @@ package frc.robot.subsystems.drive;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants;
+import frc.robot.Constants;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.kinematics.SwerveModulePosition;
@@ -23,6 +24,7 @@ public class Module {
   private final Alert turnDisconnectedAlert;
   private final Alert turnEncoderDisconnectedAlert;
   private SwerveModulePosition[] odometryPositions = new SwerveModulePosition[] {};
+  private Rotation2d lastTurnSetpoint = null;
 
   public Module(
       ModuleIO io,
@@ -74,9 +76,36 @@ public class Module {
   /** Runs the module with the specified setpoint state. Returns the optimized setpoint. */
   public SwerveModuleVelocity runSetpoint(SwerveModuleVelocity state) {
     SwerveModuleVelocity optimized = state.optimize(getAngle()).cosineScale(inputs.turnPosition);
+    double turnVelocityRadPerSec =
+        setpointVelocityRadPerSec(lastTurnSetpoint, optimized.angle, Constants.ROBOT_PERIOD);
+    lastTurnSetpoint = optimized.angle;
     io.setDriveVelocity(optimized.velocity / constants.WheelRadius);
-    io.setTurnPosition(optimized.angle);
+    io.setTurnPosition(optimized.angle, turnVelocityRadPerSec);
+    Logger.recordOutput(
+        "Module" + Integer.toString(index) + "/TurnSetpointVelRadPerSec", turnVelocityRadPerSec);
     return optimized;
+  }
+
+  /**
+   * Steer rate implied by consecutive azimuth setpoints. A ≥90° jump is an optimize flip, not a
+   * slew — velocity feedforward must stay 0.
+   */
+  static double setpointVelocityRadPerSec(
+      Rotation2d lastSetpoint, Rotation2d nextSetpoint, double dt) {
+    if (lastSetpoint == null
+        || nextSetpoint == null
+        || !Double.isFinite(dt)
+        || dt <= 0.0
+        || !Double.isFinite(lastSetpoint.getRadians())
+        || !Double.isFinite(nextSetpoint.getRadians())) {
+      return 0.0;
+    }
+    double dTheta = nextSetpoint.minus(lastSetpoint).getRadians();
+    if (!Double.isFinite(dTheta) || Math.abs(dTheta) > Math.PI / 2.0) {
+      return 0.0;
+    }
+    double velocity = dTheta / dt;
+    return Double.isFinite(velocity) ? velocity : 0.0;
   }
 
   /** Runs the module with the specified output while controlling to zero degrees. */

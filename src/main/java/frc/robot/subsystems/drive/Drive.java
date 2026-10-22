@@ -4,14 +4,15 @@ import static org.wpilib.units.Units.*;
 
 import frc.robot.Constants;
 import frc.robot.Constants.Mode;
-import frc.robot.generated.TunerConstants;
+import frc.robot.generated.RobotTunerConstants;
+import frc.robot.util.RobotIdentity;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.DoubleUnaryOperator;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
-import org.wpilib.command2.Command;
-import org.wpilib.command2.SubsystemBase;
-import org.wpilib.command2.sysid.SysIdRoutine;
+import org.wpilib.command3.Command;
+import org.wpilib.command3.Mechanism;
 import org.wpilib.driverstation.RobotState;
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.math.estimator.SwerveDrivePoseEstimator;
@@ -26,26 +27,35 @@ import org.wpilib.math.kinematics.SwerveModuleVelocity;
 import org.wpilib.math.linalg.Matrix;
 import org.wpilib.math.numbers.N1;
 import org.wpilib.math.numbers.N3;
+import org.wpilib.sysid.SysIdRoutineLog;
+import org.wpilib.system.Timer;
 import org.wpilib.util.Alert;
 import org.wpilib.util.Alert.Level;
 
-public class Drive extends SubsystemBase {
+public class Drive implements Mechanism {
+  private static final RobotTunerConstants TUNER = RobotIdentity.getTunerConstants();
+
   // TunerConstants doesn't include these constants, so they are declared locally
-  static final double ODOMETRY_FREQUENCY = TunerConstants.kCANBus.isNetworkFD() ? 250.0 : 100.0;
+  static final double ODOMETRY_FREQUENCY = TUNER.kCANBus.isNetworkFD() ? 250.0 : 100.0;
   public static final double DRIVE_BASE_RADIUS =
       Math.max(
           Math.max(
-              Math.hypot(TunerConstants.FrontLeft.LocationX, TunerConstants.FrontLeft.LocationY),
-              Math.hypot(TunerConstants.FrontRight.LocationX, TunerConstants.FrontRight.LocationY)),
+              Math.hypot(TUNER.FrontLeft.LocationX, TUNER.FrontLeft.LocationY),
+              Math.hypot(TUNER.FrontRight.LocationX, TUNER.FrontRight.LocationY)),
           Math.max(
-              Math.hypot(TunerConstants.BackLeft.LocationX, TunerConstants.BackLeft.LocationY),
-              Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
+              Math.hypot(TUNER.BackLeft.LocationX, TUNER.BackLeft.LocationY),
+              Math.hypot(TUNER.BackRight.LocationX, TUNER.BackRight.LocationY)));
+
+  // SysId test timing, matching the Commands v2 SysIdRoutine defaults
+  private static final double SYSID_SETTLE_SECS = 1.0;
+  private static final double SYSID_RAMP_VOLTS_PER_SEC = 1.0;
+  private static final double SYSID_STEP_VOLTS = 7.0;
+  private static final double SYSID_TIMEOUT_SECS = 10.0;
 
   static final Lock odometryLock = new ReentrantLock();
   private final GyroIO gyroIO;
   private final GyroIOInputsAutoLogged gyroInputs = new GyroIOInputsAutoLogged();
   private final Module[] modules = new Module[4]; // FL, FR, BL, BR
-  private final SysIdRoutine sysId;
   private final Alert gyroDisconnectedAlert =
       new Alert(
           "Drive",
@@ -72,30 +82,19 @@ public class Drive extends SubsystemBase {
       ModuleIO blModuleIO,
       ModuleIO brModuleIO) {
     this.gyroIO = gyroIO;
-    modules[0] = new Module(flModuleIO, 0, TunerConstants.FrontLeft);
-    modules[1] = new Module(frModuleIO, 1, TunerConstants.FrontRight);
-    modules[2] = new Module(blModuleIO, 2, TunerConstants.BackLeft);
-    modules[3] = new Module(brModuleIO, 3, TunerConstants.BackRight);
+    modules[0] = new Module(flModuleIO, 0, TUNER.FrontLeft);
+    modules[1] = new Module(frModuleIO, 1, TUNER.FrontRight);
+    modules[2] = new Module(blModuleIO, 2, TUNER.BackLeft);
+    modules[3] = new Module(brModuleIO, 3, TUNER.BackRight);
 
     // Usage reporting for swerve template
     HAL.reportUsage("RobotDrive", "SwerveAdvantageKit");
 
     // Start odometry thread
     PhoenixOdometryThread.getInstance().start();
-
-    // Configure SysId
-    sysId =
-        new SysIdRoutine(
-            new SysIdRoutine.Config(
-                null,
-                null,
-                null,
-                (state) -> Logger.recordOutput("Drive/SysIdState", state.toString())),
-            new SysIdRoutine.Mechanism(
-                (voltage) -> runCharacterization(voltage.in(Volts)), null, this));
   }
 
-  @Override
+  /** Updates inputs and odometry. Called by {@code Robot.robotPeriodic()} before the scheduler. */
   public void periodic() {
     odometryLock.lock(); // Prevents odometry updates while reading data
     gyroIO.updateInputs(gyroInputs);
@@ -163,8 +162,7 @@ public class Drive extends SubsystemBase {
     ChassisVelocities discreteSpeeds = speeds.discretize(Constants.ROBOT_PERIOD);
     SwerveModuleVelocity[] setpointStates = kinematics.toSwerveModuleVelocities(discreteSpeeds);
     setpointStates =
-        SwerveDriveKinematics.desaturateWheelVelocities(
-            setpointStates, TunerConstants.kSpeedAt12Volts);
+        SwerveDriveKinematics.desaturateWheelVelocities(setpointStates, TUNER.kSpeedAt12Volts);
 
     // Log unoptimized setpoints and setpoint speeds
     Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
@@ -204,16 +202,59 @@ public class Drive extends SubsystemBase {
     stop();
   }
 
+  /** Direction of a SysId test. */
+  public enum SysIdDirection {
+    FORWARD,
+    REVERSE
+  }
+
   /** Returns a command to run a quasistatic test in the specified direction. */
-  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
-    return run(() -> runCharacterization(0.0))
-        .withTimeout(1.0)
-        .andThen(sysId.quasistatic(direction));
+  public Command sysIdQuasistatic(SysIdDirection direction) {
+    double sign = direction == SysIdDirection.FORWARD ? 1.0 : -1.0;
+    return sysIdTest(
+        direction == SysIdDirection.FORWARD
+            ? SysIdRoutineLog.State.QUASISTATIC_FORWARD
+            : SysIdRoutineLog.State.QUASISTATIC_REVERSE,
+        elapsedSecs -> sign * SYSID_RAMP_VOLTS_PER_SEC * elapsedSecs);
   }
 
   /** Returns a command to run a dynamic test in the specified direction. */
-  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
-    return run(() -> runCharacterization(0.0)).withTimeout(1.0).andThen(sysId.dynamic(direction));
+  public Command sysIdDynamic(SysIdDirection direction) {
+    double sign = direction == SysIdDirection.FORWARD ? 1.0 : -1.0;
+    return sysIdTest(
+        direction == SysIdDirection.FORWARD
+            ? SysIdRoutineLog.State.DYNAMIC_FORWARD
+            : SysIdRoutineLog.State.DYNAMIC_REVERSE,
+        elapsedSecs -> sign * SYSID_STEP_VOLTS);
+  }
+
+  /**
+   * Orients the modules, then applies the voltage profile until the test times out or is canceled.
+   */
+  private Command sysIdTest(SysIdRoutineLog.State state, DoubleUnaryOperator voltageAtSecs) {
+    return run(coroutine -> {
+          Timer timer = new Timer();
+          timer.start();
+          while (timer.get() < SYSID_SETTLE_SECS) {
+            runCharacterization(0.0);
+            coroutine.yield();
+          }
+
+          timer.restart();
+          while (timer.get() < SYSID_TIMEOUT_SECS) {
+            runCharacterization(voltageAtSecs.applyAsDouble(timer.get()));
+            Logger.recordOutput("Drive/SysIdState", state.toString());
+            coroutine.yield();
+          }
+          endSysIdTest();
+        })
+        .whenCanceled(this::endSysIdTest)
+        .named("SysId " + state);
+  }
+
+  private void endSysIdTest() {
+    runCharacterization(0.0);
+    Logger.recordOutput("Drive/SysIdState", SysIdRoutineLog.State.NONE.toString());
   }
 
   /** Returns the module states (turn angles and drive velocities) for all of the modules. */
@@ -270,6 +311,21 @@ public class Drive extends SubsystemBase {
     return getPose().getRotation();
   }
 
+  /** Returns the raw gyro yaw used by teleop rotation compensation. */
+  public Rotation2d getYaw() {
+    return gyroInputs.yawPosition;
+  }
+
+  /** Returns the gyro yaw rate in radians per second. */
+  public double getYawVelocityRadPerSec() {
+    return gyroInputs.yawVelocityRadPerSec;
+  }
+
+  /** Returns whether the gyro is currently connected. */
+  public boolean isGyroConnected() {
+    return gyroInputs.connected;
+  }
+
   /** Resets the current odometry pose. */
   public void setPose(Pose2d pose) {
     poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
@@ -286,7 +342,7 @@ public class Drive extends SubsystemBase {
 
   /** Returns the maximum linear speed in meters per sec. */
   public double getMaxLinearSpeedMetersPerSec() {
-    return TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
+    return TUNER.kSpeedAt12Volts.in(MetersPerSecond);
   }
 
   /** Returns the maximum angular speed in radians per sec. */
@@ -297,10 +353,10 @@ public class Drive extends SubsystemBase {
   /** Returns an array of module translations. */
   public static Translation2d[] getModuleTranslations() {
     return new Translation2d[] {
-      new Translation2d(TunerConstants.FrontLeft.LocationX, TunerConstants.FrontLeft.LocationY),
-      new Translation2d(TunerConstants.FrontRight.LocationX, TunerConstants.FrontRight.LocationY),
-      new Translation2d(TunerConstants.BackLeft.LocationX, TunerConstants.BackLeft.LocationY),
-      new Translation2d(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)
+      new Translation2d(TUNER.FrontLeft.LocationX, TUNER.FrontLeft.LocationY),
+      new Translation2d(TUNER.FrontRight.LocationX, TUNER.FrontRight.LocationY),
+      new Translation2d(TUNER.BackLeft.LocationX, TUNER.BackLeft.LocationY),
+      new Translation2d(TUNER.BackRight.LocationX, TUNER.BackRight.LocationY)
     };
   }
 }

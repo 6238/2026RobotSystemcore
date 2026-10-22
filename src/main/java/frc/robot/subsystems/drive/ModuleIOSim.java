@@ -30,6 +30,8 @@ public class ModuleIOSim implements ModuleIO {
   private static final double DRIVE_KV = 1.0 / Units.rotationsToRadians(1.0 / DRIVE_KV_ROT);
   private static final double TURN_KP = 8.0;
   private static final double TURN_KD = 0.0;
+  // Tuner steer kV is 2.33 V / (rot/s) → V / (rad/s)
+  private static final double TURN_KV = 2.33 / (2.0 * Math.PI);
   private static final DCMotor DRIVE_GEARBOX = DCMotor.getKrakenX60Foc(1);
   private static final DCMotor TURN_GEARBOX = DCMotor.getKrakenX60Foc(1);
 
@@ -41,6 +43,7 @@ public class ModuleIOSim implements ModuleIO {
   private PIDController driveController = new PIDController(DRIVE_KP, 0, DRIVE_KD);
   private PIDController turnController = new PIDController(TURN_KP, 0, TURN_KD);
   private double driveFFVolts = 0.0;
+  private double turnFFVolts = 0.0;
   private double driveAppliedVolts = 0.0;
   private double turnAppliedVolts = 0.0;
 
@@ -70,7 +73,7 @@ public class ModuleIOSim implements ModuleIO {
       driveController.reset();
     }
     if (turnClosedLoop) {
-      turnAppliedVolts = turnController.calculate(turnSim.getAngularPosition());
+      turnAppliedVolts = turnFFVolts + turnController.calculate(turnSim.getAngularPosition());
     } else {
       turnController.reset();
     }
@@ -111,12 +114,6 @@ public class ModuleIOSim implements ModuleIO {
   }
 
   @Override
-  public void setTurnOpenLoop(double output) {
-    turnClosedLoop = false;
-    turnAppliedVolts = output;
-  }
-
-  @Override
   public void setDriveVelocity(double velocityRadPerSec) {
     driveClosedLoop = true;
     driveFFVolts = DRIVE_KS * Math.signum(velocityRadPerSec) + DRIVE_KV * velocityRadPerSec;
@@ -124,8 +121,16 @@ public class ModuleIOSim implements ModuleIO {
   }
 
   @Override
-  public void setTurnPosition(Rotation2d rotation) {
+  public void setTurnOpenLoop(double output) {
+    turnClosedLoop = false;
+    turnFFVolts = 0.0;
+    turnAppliedVolts = output;
+  }
+
+  @Override
+  public void setTurnPosition(Rotation2d rotation, double velocityRadPerSec) {
     turnClosedLoop = true;
+    turnFFVolts = TURN_KV * velocityRadPerSec;
     turnController.setSetpoint(rotation.getRadians());
   }
 
