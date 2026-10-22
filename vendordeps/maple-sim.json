@@ -1,0 +1,20 @@
+{
+  "fileName": "maple-sim.json",
+  "name": "maplesim",
+  "version": "0.4.0-beta-alpha7",
+  "wpilibYear": "2027_alpha7",
+  "uuid": "c39481e8-4a63-4a4c-9df6-48d91e4da37b",
+  "mavenUrls": [
+    "https://repo1.maven.org/maven2"
+  ],
+  "jsonUrl": "",
+  "javaDependencies": [
+    {
+      "groupId": "org.dyn4j",
+      "artifactId": "dyn4j",
+      "version": "5.0.2"
+    }
+  ],
+  "jniDependencies": [],
+  "cppDependencies": []
+}

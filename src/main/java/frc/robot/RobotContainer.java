@@ -6,18 +6,34 @@ import frc.robot.commands.DriveCommands;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
+import frc.robot.subsystems.drive.GyroIOSim;
+import frc.robot.subsystems.drive.MapleSimSwerve;
 import frc.robot.subsystems.drive.ModuleIO;
 import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.drive.ModuleIOTalonFX;
+import frc.robot.subsystems.hopper.Hopper;
+import frc.robot.subsystems.hopper.HopperIO;
+import frc.robot.subsystems.hopper.HopperIOSim;
+import frc.robot.subsystems.hopper.HopperIOTalonFX;
+import frc.robot.subsystems.intake.Intake;
+import frc.robot.subsystems.intake.IntakeIO;
+import frc.robot.subsystems.intake.IntakeIOSim;
+import frc.robot.subsystems.intake.IntakeIOTalonFX;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
+import frc.robot.subsystems.shooter.ShooterIOSim;
 import frc.robot.subsystems.shooter.ShooterIOTalonFX;
+import frc.robot.subsystems.superstructure.Superstructure;
+import frc.robot.subsystems.superstructure.Superstructure.Wanted;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionIO;
 import frc.robot.subsystems.vision.VisionIOPhotonVision;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
 import frc.robot.util.RobotIdentity;
+import org.ironmaple.simulation.SimulatedArena;
+import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
 import org.littletonrobotics.junction.Logger;
+import org.wpilib.command3.Command;
 import org.wpilib.command3.button.CommandXboxController;
 import org.wpilib.hardware.bus.CANPort;
 import org.wpilib.hardware.power.PowerDistribution;
@@ -32,8 +48,12 @@ public class RobotContainer {
   public final Drive drive;
   public final Vision vision;
   public final Shooter shooter;
+  public final Hopper hopper;
+  public final Intake intake;
+  public final Superstructure superstructure;
   public final CommandXboxController controller = new CommandXboxController(0);
   private PowerDistribution pdh;
+  private SwerveDriveSimulation swerveDriveSimulation;
 
   public RobotContainer() {
     switch (Constants.currentMode) {
@@ -53,23 +73,34 @@ public class RobotContainer {
                 new VisionIOPhotonVision(camera0Name, robotToCamera0),
                 new VisionIOPhotonVision(camera1Name, robotToCamera1));
         shooter = new Shooter(new ShooterIOTalonFX());
+        hopper = new Hopper(new HopperIOTalonFX());
+        intake = new Intake(new IntakeIOTalonFX());
         break;
 
       case SIM:
+        swerveDriveSimulation =
+            MapleSimSwerve.createSimulationDrive(RobotIdentity.getTunerConstants());
         drive =
             new Drive(
-                new GyroIO() {},
-                new ModuleIOSim(RobotIdentity.getTunerConstants().FrontLeft),
-                new ModuleIOSim(RobotIdentity.getTunerConstants().FrontRight),
-                new ModuleIOSim(RobotIdentity.getTunerConstants().BackLeft),
-                new ModuleIOSim(RobotIdentity.getTunerConstants().BackRight));
+                new GyroIOSim(swerveDriveSimulation.getGyroSimulation()),
+                new ModuleIOSim(swerveDriveSimulation.getModules()[0]),
+                new ModuleIOSim(swerveDriveSimulation.getModules()[1]),
+                new ModuleIOSim(swerveDriveSimulation.getModules()[2]),
+                new ModuleIOSim(swerveDriveSimulation.getModules()[3]),
+                swerveDriveSimulation);
         vision =
             new Vision(
                 drive::addVisionMeasurement,
                 drive::getPose,
-                new VisionIOPhotonVisionSim(camera0Name, robotToCamera0, drive::getPose),
-                new VisionIOPhotonVisionSim(camera1Name, robotToCamera1, drive::getPose));
-        shooter = new Shooter(new ShooterIO() {});
+                new VisionIOPhotonVisionSim(
+                    camera0Name, robotToCamera0, swerveDriveSimulation::getSimulatedDriveTrainPose),
+                new VisionIOPhotonVisionSim(
+                    camera1Name,
+                    robotToCamera1,
+                    swerveDriveSimulation::getSimulatedDriveTrainPose));
+        shooter = new Shooter(new ShooterIOSim());
+        hopper = new Hopper(new HopperIOSim());
+        intake = new Intake(new IntakeIOSim());
         break;
 
       default:
@@ -84,9 +115,12 @@ public class RobotContainer {
             new Vision(
                 drive::addVisionMeasurement, drive::getPose, new VisionIO() {}, new VisionIO() {});
         shooter = new Shooter(new ShooterIO() {});
+        hopper = new Hopper(new HopperIO() {});
+        intake = new Intake(new IntakeIO() {});
         break;
     }
 
+    superstructure = new Superstructure(drive, shooter, hopper, intake);
     configureButtonBindings();
   }
 
@@ -95,7 +129,6 @@ public class RobotContainer {
    * only live as long as that OpMode.
    */
   private void configureButtonBindings() {
-    // Lock to 0° when A button is held
     controller
         .a()
         .whileTrue(
@@ -105,10 +138,8 @@ public class RobotContainer {
                 () -> -controller.getController().getLeftX(),
                 () -> Rotation2d.ZERO));
 
-    // Switch to X pattern when X button is pressed
     controller.x().onTrue(drive.run(coroutine -> drive.stopWithX()).named("Stop With X"));
 
-    // Reset gyro to 0° when B button is pressed
     controller
         .b()
         .onTrue(
@@ -118,6 +149,44 @@ public class RobotContainer {
                         drive.setPose(
                             new Pose2d(drive.getPose().getTranslation(), Rotation2d.ZERO)))
                 .named("Reset Heading"));
+
+    controller
+        .rightTrigger()
+        .whileTrue(
+            Command.parallel(
+                    DriveCommands.joystickDriveAtAngle(
+                        drive,
+                        () -> -controller.getController().getLeftY(),
+                        () -> -controller.getController().getLeftX(),
+                        () -> superstructure.getShotSetpoint().robotPose().getRotation()),
+                    superstructure.want(
+                        () ->
+                            Constants.shouldPass(drive.getPose().getX())
+                                ? Wanted.PASS_INTAKE
+                                : Wanted.SHOOT_INTAKE))
+                .named("ShootIntake"));
+
+    controller
+        .rightBumper()
+        .whileTrue(
+            Command.parallel(
+                    DriveCommands.joystickDriveAtAngle(
+                        drive,
+                        () -> -controller.getController().getLeftY(),
+                        () -> -controller.getController().getLeftX(),
+                        () -> superstructure.getShotSetpoint().robotPose().getRotation()),
+                    superstructure.want(
+                        () ->
+                            Constants.shouldPass(drive.getPose().getX())
+                                ? Wanted.PASSING
+                                : Wanted.SHOOTING))
+                .named("Shoot"));
+
+    controller.leftBumper().toggleOnTrue(superstructure.want(() -> Wanted.INTAKING));
+    controller.leftTrigger().whileTrue(superstructure.want(() -> Wanted.SPIT));
+    controller.y().whileTrue(superstructure.want(() -> Wanted.REVERSE));
+    controller.dpadLeft().whileTrue(superstructure.want(() -> Wanted.PIT_SHOOT));
+    controller.view().onTrue(intake.reset());
   }
 
   /** Logs robot-level telemetry that does not belong to a mechanism. */
@@ -126,5 +195,15 @@ public class RobotContainer {
       Logger.recordOutput("PDH/Voltage", pdh.getVoltage());
       Logger.recordOutput("PDH/TotalCurrent", pdh.getTotalCurrent());
     }
+  }
+
+  /** Steps MapleSim and logs the simulated field pose. */
+  public void updateSimulation() {
+    if (swerveDriveSimulation == null) {
+      return;
+    }
+    SimulatedArena.getInstance().simulationPeriodic();
+    Logger.recordOutput(
+        "FieldSimulation/RobotPosition", swerveDriveSimulation.getSimulatedDriveTrainPose());
   }
 }

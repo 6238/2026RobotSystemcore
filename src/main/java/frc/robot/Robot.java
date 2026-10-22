@@ -1,5 +1,8 @@
 package frc.robot;
 
+import frc.robot.Constants.Mode;
+import org.ironmaple.simulation.SimulatedArena;
+import org.ironmaple.simulation.seasonspecific.rebuilt2026.Arena2026Rebuilt;
 import org.littletonrobotics.junction.AutoLogOutputManager;
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.Logger;
@@ -63,6 +66,10 @@ public class Robot extends OpModeRobot {
     Logger.AdvancedHooks.disableRobotBaseCheck();
     Logger.start();
 
+    if (Constants.currentMode == Mode.SIM) {
+      SimulatedArena.overrideInstance(new Arena2026Rebuilt(false));
+    }
+
     container = new RobotContainer();
 
     AutoLogOutputManager.addObject(this);
@@ -79,12 +86,16 @@ public class Robot extends OpModeRobot {
     container.drive.periodic();
     container.vision.periodic();
     container.shooter.periodic();
+    container.hopper.periodic();
+    container.intake.periodic();
+    container.superstructure.periodic();
 
     // Runs the Scheduler. This is responsible for polling buttons, queuing default commands, and
     // running scheduled commands until they yield.
     Scheduler.getDefault().run();
 
     container.periodic();
+    container.updateSimulation();
 
     long userEnd = RobotController.getMonotonicTime();
     Logger.AdvancedHooks.invokePeriodicAfterUser(userEnd - userStart, userStart - beforeStart);

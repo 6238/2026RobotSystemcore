@@ -12,23 +12,28 @@ import org.wpilib.units.measure.Voltage;
 public interface ShooterIO {
   @AutoLog
   public class ShooterInputs {
-    public boolean leftTalonConnected;
-    public boolean rightTalonConnected;
-    public AngularVelocity shooterVelocity = RotationsPerSecond.of(0.0);
-    public Current shooterStatorCurrent = Amps.of(0.0);
-    public Voltage shooterAppliedVoltage = Volts.of(0.0);
+    public boolean flywheelTalonConnected;
+    public boolean flywheelFollowerConnected;
+    public boolean flywheelUsingBackup;
+    public AngularVelocity flywheelVelocity = RotationsPerSecond.of(0.0);
+    public Current flywheelStatorCurrent = Amps.of(0.0);
+    public Voltage flywheelAppliedVoltage = Volts.of(0.0);
 
     public boolean feederTalonConnected;
     public AngularVelocity feederVelocity = RotationsPerSecond.of(0.0);
     public Current feederStatorCurrent = Amps.of(0.0);
     public Voltage feederAppliedVoltage = Volts.of(0.0);
+
+    public boolean beamBreakTriggered;
   }
 
   public default void updateInputs(ShooterInputs inputs) {}
 
   public default void setFlywheelVelocity(AngularVelocity targetVelocity) {}
+
+  public default void setFlywheelVoltage(Voltage voltage) {}
+
   public default void setFeederVelocity(AngularVelocity targetVelocity) {}
 
-  public default void idleFlywheel() {}
-  public default void idleFeeder() {}
+  public default void setFeederVoltage(Voltage voltage) {}
 }

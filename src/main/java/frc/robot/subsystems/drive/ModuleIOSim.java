@@ -1,107 +1,90 @@
 package frc.robot.subsystems.drive;
 
-import com.ctre.phoenix6.configs.CANcoderConfiguration;
-import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.swerve.SwerveModuleConstants;
+import static org.wpilib.units.Units.Amps;
+import static org.wpilib.units.Units.Radians;
+import static org.wpilib.units.Units.RadiansPerSecond;
+import static org.wpilib.units.Units.Volts;
+
+import org.ironmaple.simulation.drivesims.SwerveModuleSimulation;
+import org.ironmaple.simulation.motorsims.SimulatedMotorController.GenericMotorController;
 import org.wpilib.math.controller.PIDController;
 import org.wpilib.math.geometry.Rotation2d;
-import org.wpilib.math.linalg.Matrix;
-import org.wpilib.math.numbers.N1;
-import org.wpilib.math.numbers.N2;
-import org.wpilib.math.system.DCMotor;
-import org.wpilib.math.system.LinearSystem;
-import org.wpilib.math.util.Nat;
 import org.wpilib.math.util.Units;
-import org.wpilib.simulation.DCMotorSim;
 import org.wpilib.system.Timer;
 
 /**
- * Physics sim implementation of module IO. The sim models are configured using a set of module
- * constants from Phoenix. Simulation is always based on voltage control.
+ * MapleSim-backed physics sim implementation of module IO.
+ *
+ * <p>Open-loop setters take volts. Closed-loop uses local PID plus drive/steer feedforward.
+ * Voltages are applied here; {@code SimulatedArena} steps the plant after the scheduler.
  */
 public class ModuleIOSim implements ModuleIO {
-  // TunerConstants doesn't support separate sim constants, so they are declared
-  // locally
-  private static final double DRIVE_KP = 0.05;
+  private static final double DRIVE_KP = 0.2;
   private static final double DRIVE_KD = 0.0;
   private static final double DRIVE_KS = 0.0;
-  private static final double DRIVE_KV_ROT =
-      0.91035; // Same units as TunerConstants: (volt * secs) / rotation
+  private static final double DRIVE_KV_ROT = 0.91035;
   private static final double DRIVE_KV = 1.0 / Units.rotationsToRadians(1.0 / DRIVE_KV_ROT);
   private static final double TURN_KP = 8.0;
   private static final double TURN_KD = 0.0;
-  // Tuner steer kV is 2.33 V / (rot/s) → V / (rad/s)
   private static final double TURN_KV = 2.33 / (2.0 * Math.PI);
-  private static final DCMotor DRIVE_GEARBOX = DCMotor.getKrakenX60Foc(1);
-  private static final DCMotor TURN_GEARBOX = DCMotor.getKrakenX60Foc(1);
 
-  private final DCMotorSim driveSim;
-  private final DCMotorSim turnSim;
+  private final SwerveModuleSimulation moduleSimulation;
+  private final GenericMotorController driveMotor;
+  private final GenericMotorController turnMotor;
 
   private boolean driveClosedLoop = false;
   private boolean turnClosedLoop = false;
-  private PIDController driveController = new PIDController(DRIVE_KP, 0, DRIVE_KD);
-  private PIDController turnController = new PIDController(TURN_KP, 0, TURN_KD);
+  private final PIDController driveController = new PIDController(DRIVE_KP, 0.0, DRIVE_KD);
+  private final PIDController turnController = new PIDController(TURN_KP, 0.0, TURN_KD);
   private double driveFFVolts = 0.0;
   private double turnFFVolts = 0.0;
   private double driveAppliedVolts = 0.0;
   private double turnAppliedVolts = 0.0;
 
-  public ModuleIOSim(
-      SwerveModuleConstants<TalonFXConfiguration, TalonFXConfiguration, CANcoderConfiguration>
-          constants) {
-    // Create drive and turn sim models
-    driveSim =
-        new DCMotorSim(
-            dcMotorSystem(DRIVE_GEARBOX, constants.DriveInertia, constants.DriveMotorGearRatio),
-            DRIVE_GEARBOX);
-    turnSim =
-        new DCMotorSim(
-            dcMotorSystem(TURN_GEARBOX, constants.SteerInertia, constants.SteerMotorGearRatio),
-            TURN_GEARBOX);
-
-    // Enable wrapping for turn PID
+  public ModuleIOSim(SwerveModuleSimulation moduleSimulation) {
+    this.moduleSimulation = moduleSimulation;
+    this.driveMotor =
+        moduleSimulation.useGenericMotorControllerForDrive().withCurrentLimit(Amps.of(60));
+    this.turnMotor = moduleSimulation.useGenericControllerForSteer().withCurrentLimit(Amps.of(20));
     turnController.enableContinuousInput(-Math.PI, Math.PI);
   }
 
   @Override
   public void updateInputs(ModuleIOInputs inputs) {
-    // Run closed-loop control
+    double driveVelRadPerSec = moduleSimulation.getDriveWheelFinalSpeed().in(RadiansPerSecond);
+    double turnPosRad = moduleSimulation.getSteerAbsoluteFacing().getRadians();
+
     if (driveClosedLoop) {
-      driveAppliedVolts = driveFFVolts + driveController.calculate(driveSim.getAngularVelocity());
+      driveAppliedVolts = driveFFVolts + driveController.calculate(driveVelRadPerSec);
     } else {
       driveController.reset();
     }
     if (turnClosedLoop) {
-      turnAppliedVolts = turnFFVolts + turnController.calculate(turnSim.getAngularPosition());
+      turnAppliedVolts = turnFFVolts + turnController.calculate(turnPosRad);
     } else {
       turnController.reset();
     }
 
-    // Update simulation state
-    driveSim.setInputVoltage(Math.clamp(driveAppliedVolts, -12.0, 12.0));
-    turnSim.setInputVoltage(Math.clamp(turnAppliedVolts, -12.0, 12.0));
-    driveSim.update(0.02);
-    turnSim.update(0.02);
+    double driveVoltsClamped = Math.clamp(driveAppliedVolts, -12.0, 12.0);
+    double turnVoltsClamped = Math.clamp(turnAppliedVolts, -12.0, 12.0);
+    driveMotor.requestVoltage(Volts.of(driveVoltsClamped));
+    turnMotor.requestVoltage(Volts.of(turnVoltsClamped));
 
-    // Update drive inputs
     inputs.driveConnected = true;
-    inputs.drivePositionRad = driveSim.getAngularPosition();
-    inputs.driveVelocityRadPerSec = driveSim.getAngularVelocity();
-    inputs.driveAppliedVolts = driveAppliedVolts;
-    inputs.driveCurrentAmps = Math.abs(driveSim.getCurrentDraw());
+    inputs.drivePositionRad = moduleSimulation.getDriveWheelFinalPosition().in(Radians);
+    inputs.driveVelocityRadPerSec = driveVelRadPerSec;
+    inputs.driveAppliedVolts = driveVoltsClamped;
+    inputs.driveCurrentAmps = Math.abs(moduleSimulation.getDriveMotorStatorCurrent().in(Amps));
 
-    // Update turn inputs
     inputs.turnConnected = true;
     inputs.turnEncoderConnected = true;
-    inputs.turnAbsolutePosition = new Rotation2d(turnSim.getAngularPosition());
-    inputs.turnPosition = new Rotation2d(turnSim.getAngularPosition());
-    inputs.turnVelocityRadPerSec = turnSim.getAngularVelocity();
-    inputs.turnAppliedVolts = turnAppliedVolts;
-    inputs.turnCurrentAmps = Math.abs(turnSim.getCurrentDraw());
+    inputs.turnAbsolutePosition = moduleSimulation.getSteerAbsoluteFacing();
+    inputs.turnPosition = inputs.turnAbsolutePosition;
+    inputs.turnVelocityRadPerSec =
+        moduleSimulation.getSteerAbsoluteEncoderSpeed().in(RadiansPerSecond);
+    inputs.turnAppliedVolts = turnVoltsClamped;
+    inputs.turnCurrentAmps = Math.abs(moduleSimulation.getSteerMotorStatorCurrent().in(Amps));
 
-    // Update odometry inputs (50Hz because high-frequency odometry in sim doesn't
-    // matter)
     inputs.odometryTimestamps = new double[] {Timer.getMonotonicTimestamp()};
     inputs.odometryDrivePositionsRad = new double[] {inputs.drivePositionRad};
     inputs.odometryTurnPositions = new Rotation2d[] {inputs.turnPosition};
@@ -132,20 +115,5 @@ public class ModuleIOSim implements ModuleIO {
     turnClosedLoop = true;
     turnFFVolts = TURN_KV * velocityRadPerSec;
     turnController.setSetpoint(rotation.getRadians());
-  }
-
-  /**
-   * Single-joint DC motor system. {@code LinearSystemId.createDCMotorSystem} was removed in WPILib
-   * 2027 alpha 7; this is the same state-space model (position, velocity).
-   */
-  private static LinearSystem<N2, N1, N2> dcMotorSystem(DCMotor motor, double j, double g) {
-    return new LinearSystem<>(
-        new Matrix<>(
-            Nat.N2(),
-            Nat.N2(),
-            new double[] {0, 1, 0, -g * g * motor.Kt / (motor.Kv * motor.R * j)}),
-        new Matrix<>(Nat.N2(), Nat.N1(), new double[] {0, g * motor.Kt / (motor.R * j)}),
-        new Matrix<>(Nat.N2(), Nat.N2(), new double[] {1, 0, 0, 1}),
-        new Matrix<>(Nat.N2(), Nat.N1(), new double[] {0, 0}));
   }
 }

@@ -9,6 +9,7 @@ import frc.robot.util.RobotIdentity;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.DoubleUnaryOperator;
+import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.command3.Command;
@@ -74,6 +75,7 @@ public class Drive implements Mechanism {
       };
   private SwerveDrivePoseEstimator poseEstimator =
       new SwerveDrivePoseEstimator(kinematics, rawGyroRotation, lastModulePositions, Pose2d.ZERO);
+  private final SwerveDriveSimulation sim;
 
   public Drive(
       GyroIO gyroIO,
@@ -81,6 +83,17 @@ public class Drive implements Mechanism {
       ModuleIO frModuleIO,
       ModuleIO blModuleIO,
       ModuleIO brModuleIO) {
+    this(gyroIO, flModuleIO, frModuleIO, blModuleIO, brModuleIO, null);
+  }
+
+  public Drive(
+      GyroIO gyroIO,
+      ModuleIO flModuleIO,
+      ModuleIO frModuleIO,
+      ModuleIO blModuleIO,
+      ModuleIO brModuleIO,
+      SwerveDriveSimulation sim) {
+    this.sim = sim;
     this.gyroIO = gyroIO;
     modules[0] = new Module(flModuleIO, 0, TUNER.FrontLeft);
     modules[1] = new Module(frModuleIO, 1, TUNER.FrontRight);
@@ -169,12 +182,15 @@ public class Drive implements Mechanism {
     Logger.recordOutput("SwerveChassisSpeeds/Setpoints", discreteSpeeds);
 
     // Send setpoints to modules
+    double[] turnSetpointVels = new double[4];
     for (int i = 0; i < 4; i++) {
       setpointStates[i] = modules[i].runSetpoint(setpointStates[i]);
+      turnSetpointVels[i] = modules[i].getTurnSetpointVelRadPerSec();
     }
 
     // Log optimized setpoints (runSetpoint mutates each state)
     Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
+    Logger.recordOutput("SwerveStates/TurnSetpointVelRadPerSec", turnSetpointVels);
   }
 
   /** Runs the drive in a straight line with the specified drive output. */
@@ -278,7 +294,7 @@ public class Drive implements Mechanism {
 
   /** Returns the measured chassis speeds of the robot. */
   @AutoLogOutput(key = "SwerveChassisSpeeds/Measured")
-  private ChassisVelocities getChassisVelocities() {
+  public ChassisVelocities getChassisSpeeds() {
     return kinematics.toChassisVelocities(getModuleStates());
   }
 
@@ -329,6 +345,9 @@ public class Drive implements Mechanism {
   /** Resets the current odometry pose. */
   public void setPose(Pose2d pose) {
     poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
+    if (sim != null) {
+      sim.setSimulationWorldPose(pose);
+    }
   }
 
   /** Adds a new timestamped vision measurement. */

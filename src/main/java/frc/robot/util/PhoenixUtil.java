@@ -1,6 +1,7 @@
 package frc.robot.util;
 
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import java.util.function.Supplier;
 
 public class PhoenixUtil {
@@ -10,5 +11,18 @@ public class PhoenixUtil {
       var error = command.get();
       if (error.isOK()) break;
     }
+  }
+
+  public static void applySafetyLimits(
+      TalonFXConfiguration config,
+      double maxVolts,
+      double statorCurrentLimit,
+      double supplyCurrentLimit) {
+    config.Voltage.PeakForwardVoltage = maxVolts;
+    config.Voltage.PeakReverseVoltage = -maxVolts;
+    config.CurrentLimits.StatorCurrentLimitEnable = true;
+    config.CurrentLimits.StatorCurrentLimit = statorCurrentLimit;
+    config.CurrentLimits.SupplyCurrentLimitEnable = true;
+    config.CurrentLimits.SupplyCurrentLimit = supplyCurrentLimit;
   }
 }

@@ -63,6 +63,10 @@ task(replayWatch, type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
 }
 
+repositories {
+    mavenLocal()
+}
+
 // Defining my dependencies. In this case, WPILib (+ friends), and vendor libraries.
 // Also defines JUnit 5.
 dependencies {
@@ -89,6 +93,9 @@ dependencies {
 
     def akitJson = new groovy.json.JsonSlurper().parseText(new File(projectDir.getAbsolutePath() + "/vendordeps/AdvantageKit.json").text)
     annotationProcessor "org.littletonrobotics.akit:akit-autolog:$akitJson.version"
+
+    // BrightTheBackpack maple-sim alpha-6 fork, rebuilt for WPILib 2027 alpha-7.
+    implementation files('libs/maplesim-java-0.4.0-beta-alpha7.jar')
 }
 
 test {

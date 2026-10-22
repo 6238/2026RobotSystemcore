@@ -25,6 +25,7 @@ public class Module {
   private final Alert turnEncoderDisconnectedAlert;
   private SwerveModulePosition[] odometryPositions = new SwerveModulePosition[] {};
   private Rotation2d lastTurnSetpoint = null;
+  private double lastTurnSetpointVelRadPerSec = 0.0;
 
   public Module(
       ModuleIO io,
@@ -81,8 +82,7 @@ public class Module {
     lastTurnSetpoint = optimized.angle;
     io.setDriveVelocity(optimized.velocity / constants.WheelRadius);
     io.setTurnPosition(optimized.angle, turnVelocityRadPerSec);
-    Logger.recordOutput(
-        "Module" + Integer.toString(index) + "/TurnSetpointVelRadPerSec", turnVelocityRadPerSec);
+    lastTurnSetpointVelRadPerSec = turnVelocityRadPerSec;
     return optimized;
   }
 
@@ -118,6 +118,10 @@ public class Module {
   public void stop() {
     io.setDriveOpenLoop(0.0);
     io.setTurnOpenLoop(0.0);
+  }
+
+  public double getTurnSetpointVelRadPerSec() {
+    return lastTurnSetpointVelRadPerSec;
   }
 
   /** Returns the current turn angle of the module. */
