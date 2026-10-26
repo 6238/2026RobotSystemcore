@@ -5,18 +5,13 @@ import frc.robot.generated.ConcreteMk4TunerConstants;
 import frc.robot.generated.RobotTunerConstants;
 import org.littletonrobotics.junction.Logger;
 
-/**
- * Selects which generated tuner file the existing swerve uses. This project defaults to the
- * concrete-floor campaign.
- */
 public class RobotIdentity {
   public enum RobotType {
     CONCRETE_MK4,
     COMP
   }
 
-  /** Switch identities here. Drive/IO always read {@link #getTunerConstants()}. */
-  public static final RobotType ACTIVE = RobotType.CONCRETE_MK4;
+  public static final RobotType ACTIVE = RobotType.COMP;
 
   public static RobotType getRobotType() {
     return ACTIVE;

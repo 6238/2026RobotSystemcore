@@ -42,14 +42,9 @@ public class DriveCommands {
   private DriveCommands() {}
 
   private static Translation2d getLinearVelocityFromJoysticks(double x, double y) {
-    // Apply deadband
     double linearMagnitude = MathUtil.applyDeadband(Math.hypot(x, y), DEADBAND);
     Rotation2d linearDirection = new Rotation2d(Math.atan2(y, x));
-
-    // Square magnitude for more precise control
     linearMagnitude = linearMagnitude * linearMagnitude;
-
-    // Return new linear velocity
     return new Pose2d(Translation2d.ZERO, linearDirection)
         .transformBy(new Transform2d(linearMagnitude, 0.0, Rotation2d.ZERO))
         .getTranslation();
@@ -68,15 +63,11 @@ public class DriveCommands {
             coroutine -> {
               TeleopRotation.State rotationState = TeleopRotation.State.idle();
               while (true) {
-                // Get linear velocity
                 Translation2d linearVelocity =
                     getLinearVelocityFromJoysticks(
                         xSupplier.getAsDouble(), ySupplier.getAsDouble());
 
-                // Apply rotation deadband
                 double omegaStick = MathUtil.applyDeadband(omegaSupplier.getAsDouble(), DEADBAND);
-
-                // Square rotation value for more precise control
                 omegaStick = Math.copySign(omegaStick * omegaStick, omegaStick);
                 double omegaStickRadPerSec = omegaStick * drive.getMaxAngularSpeedRadPerSec();
 
@@ -100,7 +91,6 @@ public class DriveCommands {
                 Logger.recordOutput("TeleopRotation/HoldHeading", rotation.next().holdHeading());
                 Logger.recordOutput("TeleopRotation/Holding", rotation.next().holding());
 
-                // Convert to field relative speeds & send command
                 ChassisVelocities speeds =
                     new ChassisVelocities(
                         linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
@@ -130,8 +120,6 @@ public class DriveCommands {
       DoubleSupplier xSupplier,
       DoubleSupplier ySupplier,
       Supplier<Rotation2d> rotationSupplier) {
-
-    // Create PID controller
     ProfiledPIDController angleController =
         new ProfiledPIDController(
             ANGLE_KP,
@@ -140,24 +128,17 @@ public class DriveCommands {
             new TrapezoidProfile.Constraints(ANGLE_MAX_VELOCITY, ANGLE_MAX_ACCELERATION));
     angleController.enableContinuousInput(-Math.PI, Math.PI);
 
-    // Construct command
     return drive
         .run(
             coroutine -> {
-              // Reset PID controller when command starts
               angleController.reset(drive.getRotation().getRadians());
               while (true) {
-                // Get linear velocity
                 Translation2d linearVelocity =
                     getLinearVelocityFromJoysticks(
                         xSupplier.getAsDouble(), ySupplier.getAsDouble());
-
-                // Calculate angular speed
                 double omega =
                     angleController.calculate(
                         drive.getRotation().getRadians(), rotationSupplier.get().getRadians());
-
-                // Convert to field relative speeds & send command
                 ChassisVelocities speeds =
                     new ChassisVelocities(
                         linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
@@ -190,18 +171,15 @@ public class DriveCommands {
     return drive
         .run(
             coroutine -> {
-              // Reset data
               velocitySamples.clear();
               voltageSamples.clear();
 
-              // Allow modules to orient
               timer.restart();
               while (timer.get() < FF_START_DELAY) {
                 drive.runCharacterization(0.0);
                 coroutine.yield();
               }
 
-              // Accelerate and gather data until cancelled
               timer.restart();
               while (true) {
                 double voltage = timer.get() * FF_RAMP_RATE;
@@ -211,8 +189,6 @@ public class DriveCommands {
                 coroutine.yield();
               }
             })
-
-        // When cancelled, calculate and print results
         .whenCanceled(
             () -> {
               int n = velocitySamples.size();
@@ -246,18 +222,15 @@ public class DriveCommands {
     return drive
         .run(
             coroutine -> {
-              // Reset acceleration limiter
               limiter.reset(0.0);
               state.measuring = false;
               timer.restart();
 
               while (true) {
-                // Turn in place, accelerating up to full speed
                 double speed = limiter.calculate(WHEEL_RADIUS_MAX_VELOCITY);
                 drive.runVelocity(new ChassisVelocities(0.0, 0.0, speed));
 
                 if (!state.measuring) {
-                  // Wait for modules to fully orient, then record starting measurement
                   if (timer.get() >= 1.0) {
                     state.positions = drive.getWheelRadiusCharacterizationPositions();
                     state.lastAngle = drive.getRotation();
@@ -265,7 +238,6 @@ public class DriveCommands {
                     state.measuring = true;
                   }
                 } else {
-                  // Update gyro delta
                   var rotation = drive.getRotation();
                   state.gyroDelta += Math.abs(rotation.minus(state.lastAngle).getRadians());
                   state.lastAngle = rotation;
@@ -273,8 +245,6 @@ public class DriveCommands {
                 coroutine.yield();
               }
             })
-
-        // When cancelled, calculate and print results
         .whenCanceled(
             () -> {
               if (!state.measuring) {

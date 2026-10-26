@@ -113,15 +113,7 @@ public class Superstructure {
   }
 
   public Command want(Supplier<Wanted> state) {
-    return Command.noRequirements(
-            coroutine -> {
-              while (true) {
-                wanted = state.get();
-                coroutine.yield();
-              }
-            })
-        .whenCanceled(() -> wanted = Wanted.IDLE)
-        .named("WantWhile");
+    return Command.noRequirements(coroutine -> wanted = state.get()).named("Want");
   }
 
   public Wanted getWanted() {
@@ -134,6 +126,14 @@ public class Superstructure {
 
   public ShotSetpoint getShotSetpoint() {
     return shotSetpoint;
+  }
+
+  public static Wanted nextScoreWanted(Wanted wanted, boolean pass) {
+    return switch (wanted) {
+      case SHOOTING, PASSING -> pass ? Wanted.PASSING : Wanted.SHOOTING;
+      case SHOOT_INTAKE, PASS_INTAKE -> pass ? Wanted.PASS_INTAKE : Wanted.SHOOT_INTAKE;
+      default -> wanted;
+    };
   }
 
   public static Current nextState(Wanted wanted, Current current, Inputs inputs) {
@@ -149,6 +149,7 @@ public class Superstructure {
   }
 
   public void periodic() {
+    updateScoreWanted();
     updateShotSetpoint();
     updateHopperSpeeds();
     updateHubToleranceLoops();
@@ -203,6 +204,10 @@ public class Superstructure {
                     : ShooterConstants.HUB_DROPBACK_TOLERANCE)
                 .in(Units.Degrees);
     return new Inputs(flywheelReady, hubInToleranceLoops >= HUB_CONFIRM_LOOPS, headingDropped);
+  }
+
+  private void updateScoreWanted() {
+    wanted = nextScoreWanted(wanted, Constants.shouldPass(pose.get().getX()));
   }
 
   private void updateShotSetpoint() {

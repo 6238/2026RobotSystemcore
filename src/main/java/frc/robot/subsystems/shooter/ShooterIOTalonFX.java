@@ -12,7 +12,6 @@ import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import frc.robot.util.LeaderFailover;
-import org.wpilib.hardware.discrete.DigitalInput;
 import org.wpilib.math.filter.Debouncer;
 import org.wpilib.units.measure.AngularVelocity;
 import org.wpilib.units.measure.Current;
@@ -28,9 +27,10 @@ public class ShooterIOTalonFX implements ShooterIO {
   private final TalonFX leftTalon;
   private final TalonFX rightTalon;
   private final TalonFX feederTalon;
-  private final DigitalInput beamBreak;
-  private final Follower follower =
+  private final Follower followLead =
       new Follower(ShooterConstants.FLYWHEEL_MOTOR_ID, ShooterConstants.MOTOR_ALIGNMENT);
+  private final Follower followBackup =
+      new Follower(ShooterConstants.FLYWHEEL_FOLLOWER_ID, ShooterConstants.MOTOR_ALIGNMENT);
   private final boolean opposed = ShooterConstants.MOTOR_ALIGNMENT == MotorAlignmentValue.Opposed;
 
   private final VelocityVoltage flywheelVelocity = new VelocityVoltage(0);
@@ -65,7 +65,6 @@ public class ShooterIOTalonFX implements ShooterIO {
     leftTalon = new TalonFX(ShooterConstants.FLYWHEEL_MOTOR_ID, ShooterConstants.CAN_BUS);
     rightTalon = new TalonFX(ShooterConstants.FLYWHEEL_FOLLOWER_ID, ShooterConstants.CAN_BUS);
     feederTalon = new TalonFX(ShooterConstants.FEEDER_MOTOR_ID, ShooterConstants.CAN_BUS);
-    beamBreak = new DigitalInput(ShooterConstants.BEAM_BREAK_CHANNEL);
 
     var flywheelConfig = ShooterConstants.flywheelConfig();
     var feederConfig = ShooterConstants.feederConfig();
@@ -73,7 +72,7 @@ public class ShooterIOTalonFX implements ShooterIO {
     tryUntilOk(5, () -> rightTalon.getConfigurator().apply(flywheelConfig, 0.25));
     tryUntilOk(5, () -> feederTalon.getConfigurator().apply(feederConfig, 0.25));
 
-    rightTalon.setControl(follower);
+    rightTalon.setControl(followLead);
 
     leadAngularVelocity = leftTalon.getVelocity();
     leadStatorCurrent = leftTalon.getStatorCurrent();
@@ -104,7 +103,8 @@ public class ShooterIOTalonFX implements ShooterIO {
 
     boolean leadConnected = leadConnectedDebounce.calculate(leftTalon.isConnected());
     boolean backupConnected = backupConnectedDebounce.calculate(rightTalon.isConnected());
-    boolean wantBackup = LeaderFailover.useBackup(leadConnected, backupConnected);
+    boolean wantBackup =
+        LeaderFailover.nextUsingBackup(usingBackup, leadConnected, backupConnected);
     if (wantBackup != usingBackup) {
       usingBackup = wantBackup;
       applyFollowerRole();
@@ -128,8 +128,7 @@ public class ShooterIOTalonFX implements ShooterIO {
     inputs.feederStatorCurrent = feederStatorCurrent.getValue();
     inputs.feederAppliedVoltage = feederMotorVoltage.getValue();
 
-    boolean broken = beamBreak.get();
-    inputs.beamBreakTriggered = ShooterConstants.BEAM_BREAK_INVERTED ? broken : !broken;
+    inputs.beamBreakTriggered = false;
   }
 
   @Override
@@ -157,8 +156,10 @@ public class ShooterIOTalonFX implements ShooterIO {
   }
 
   private void applyFollowerRole() {
-    if (!usingBackup) {
-      rightTalon.setControl(follower);
+    if (usingBackup) {
+      leftTalon.setControl(followBackup);
+    } else {
+      rightTalon.setControl(followLead);
     }
   }
 

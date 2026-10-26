@@ -70,10 +70,6 @@ public class Shooter implements Mechanism, AutoCloseable {
     Logger.recordOutput("Shooter/FlywheelUsingBackup", inputs.flywheelUsingBackup);
   }
 
-  /**
-   * Phoenix holds the last control request, so the default idle must write zeros instead of
-   * parking.
-   */
   @Override
   public Command idle() {
     return runRepeatedly(
@@ -83,11 +79,9 @@ public class Shooter implements Mechanism, AutoCloseable {
               io.setFlywheelVoltage(Volts.of(0.0));
               io.setFeederVoltage(Volts.of(0.0));
             })
-        .withPriority(Command.LOWEST_PRIORITY)
         .named("Shooter[IDLE]");
   }
 
-  /** Hold flywheel speed; feeder is idled. Use for IDLE pre-spin. */
   public Command holdFlywheel(AngularVelocity velocity) {
     return holdFlywheel(() -> velocity);
   }
@@ -107,7 +101,6 @@ public class Shooter implements Mechanism, AutoCloseable {
         .named("ShooterHoldFlywheel");
   }
 
-  /** Spin flywheel and reverse the feeder so balls stay out of the wheels. */
   public Command spinUp(AngularVelocity flywheelVelocity) {
     return spinUp(() -> flywheelVelocity);
   }
@@ -127,7 +120,6 @@ public class Shooter implements Mechanism, AutoCloseable {
         .named("ShooterSpinUp");
   }
 
-  /** Both actuators in velocity. */
   public Command shoot(AngularVelocity flywheelVelocity, AngularVelocity feederVelocity) {
     return shoot(() -> flywheelVelocity, () -> feederVelocity);
   }
@@ -152,7 +144,6 @@ public class Shooter implements Mechanism, AutoCloseable {
         .named("ShooterShoot");
   }
 
-  /** Open-loop reverse on both actuators. */
   public Command reverse() {
     return runRepeatedly(
             () -> {

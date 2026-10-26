@@ -24,7 +24,6 @@ public class Robot extends OpModeRobot {
   public final RobotContainer container;
 
   public Robot() {
-    // enable 100hz
     super(Constants.ROBOT_PERIOD);
 
     // Record metadata

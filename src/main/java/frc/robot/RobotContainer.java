@@ -35,8 +35,6 @@ import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
 import org.littletonrobotics.junction.Logger;
 import org.wpilib.command3.Command;
 import org.wpilib.command3.button.CommandXboxController;
-import org.wpilib.hardware.bus.CANPort;
-import org.wpilib.hardware.power.PowerDistribution;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 
@@ -52,13 +50,11 @@ public class RobotContainer {
   public final Intake intake;
   public final Superstructure superstructure;
   public final CommandXboxController controller = new CommandXboxController(0);
-  private PowerDistribution pdh;
   private SwerveDriveSimulation swerveDriveSimulation;
 
   public RobotContainer() {
     switch (Constants.currentMode) {
       case REAL:
-        pdh = new PowerDistribution(CANPort.CAN_S1, 9, PowerDistribution.ModuleType.REV);
         drive =
             new Drive(
                 new GyroIOPigeon2(),
@@ -159,12 +155,9 @@ public class RobotContainer {
                         () -> -controller.getController().getLeftY(),
                         () -> -controller.getController().getLeftX(),
                         () -> superstructure.getShotSetpoint().robotPose().getRotation()),
-                    superstructure.want(
-                        () ->
-                            Constants.shouldPass(drive.getPose().getX())
-                                ? Wanted.PASS_INTAKE
-                                : Wanted.SHOOT_INTAKE))
-                .named("ShootIntake"));
+                    superstructure.want(Wanted.SHOOT_INTAKE))
+                .named("ShootIntake"))
+        .onFalse(superstructure.want(Wanted.IDLE));
 
     controller
         .rightBumper()
@@ -175,27 +168,31 @@ public class RobotContainer {
                         () -> -controller.getController().getLeftY(),
                         () -> -controller.getController().getLeftX(),
                         () -> superstructure.getShotSetpoint().robotPose().getRotation()),
-                    superstructure.want(
-                        () ->
-                            Constants.shouldPass(drive.getPose().getX())
-                                ? Wanted.PASSING
-                                : Wanted.SHOOTING))
-                .named("Shoot"));
+                    superstructure.want(Wanted.SHOOTING))
+                .named("Shoot"))
+        .onFalse(superstructure.want(Wanted.IDLE));
 
-    controller.leftBumper().toggleOnTrue(superstructure.want(() -> Wanted.INTAKING));
-    controller.leftTrigger().whileTrue(superstructure.want(() -> Wanted.SPIT));
-    controller.y().whileTrue(superstructure.want(() -> Wanted.REVERSE));
-    controller.dpadLeft().whileTrue(superstructure.want(() -> Wanted.PIT_SHOOT));
-    controller.view().onTrue(intake.reset());
+    controller
+        .leftBumper()
+        .onTrue(
+            superstructure.want(
+                () ->
+                    superstructure.getWanted() == Wanted.INTAKING ? Wanted.IDLE : Wanted.INTAKING));
+    controller
+        .leftTrigger()
+        .whileTrue(superstructure.want(Wanted.SPIT))
+        .onFalse(superstructure.want(Wanted.IDLE));
+    controller
+        .y()
+        .whileTrue(superstructure.want(Wanted.REVERSE))
+        .onFalse(superstructure.want(Wanted.IDLE));
+    controller
+        .dpadLeft()
+        .whileTrue(superstructure.want(Wanted.PIT_SHOOT))
+        .onFalse(superstructure.want(Wanted.IDLE));
   }
 
-  /** Logs robot-level telemetry that does not belong to a mechanism. */
-  public void periodic() {
-    if (pdh != null) {
-      Logger.recordOutput("PDH/Voltage", pdh.getVoltage());
-      Logger.recordOutput("PDH/TotalCurrent", pdh.getTotalCurrent());
-    }
-  }
+  public void periodic() {}
 
   /** Steps MapleSim and logs the simulated field pose. */
   public void updateSimulation() {

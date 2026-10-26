@@ -20,7 +20,7 @@ import org.wpilib.util.Alert.Level;
  * Feeds AprilTag pose observations into the drive pose estimator. Vision never runs commands, so it
  * is not a {@link org.wpilib.command3.Mechanism}.
  */
-public class Vision {
+public class Vision implements AutoCloseable {
   private final VisionConsumer consumer;
   private final VisionIO[] io;
   private final VisionIOInputsAutoLogged[] inputs;
@@ -173,6 +173,13 @@ public class Vision {
       if (x >= zone[0] && x <= zone[1]) return true;
     }
     return false;
+  }
+
+  @Override
+  public void close() {
+    for (Alert alert : disconnectedAlerts) {
+      alert.close();
+    }
   }
 
   @FunctionalInterface

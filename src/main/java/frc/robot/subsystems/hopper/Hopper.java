@@ -53,7 +53,6 @@ public class Hopper implements Mechanism, AutoCloseable {
               io.setIndexerVoltage(Volts.of(0.0));
               io.setTopIndexerVoltage(Volts.of(0.0));
             })
-        .withPriority(Command.LOWEST_PRIORITY)
         .named("Hopper[IDLE]");
   }
 

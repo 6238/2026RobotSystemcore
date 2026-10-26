@@ -83,11 +83,9 @@ public class Intake implements Mechanism, AutoCloseable {
               io.setPivotVoltage(Volts.of(0.0));
               io.setRollerVoltage(Volts.of(0.0));
             })
-        .withPriority(Command.LOWEST_PRIORITY)
         .named("Intake[IDLE]");
   }
 
-  /** Pivot down and spin rollers. */
   public Command intake() {
     return runRepeatedly(
             () -> {
@@ -97,7 +95,6 @@ public class Intake implements Mechanism, AutoCloseable {
         .named("IntakeIntake");
   }
 
-  /** Pivot up and stop rollers. */
   public Command stow() {
     return runRepeatedly(
             () -> {
@@ -107,7 +104,6 @@ public class Intake implements Mechanism, AutoCloseable {
         .named("IntakeStow");
   }
 
-  /** Pivot to the spin-up angle and stop rollers. */
   public Command ready() {
     return runRepeatedly(
             () -> {
@@ -117,7 +113,6 @@ public class Intake implements Mechanism, AutoCloseable {
         .named("IntakeReady");
   }
 
-  /** Oscillate the pivot while spinning rollers. */
   public Command feed() {
     return run(coroutine -> {
           double startSec = Timer.getTimestamp();

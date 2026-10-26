@@ -1,10 +1,19 @@
 package frc.robot.util;
 
-/** Prefer the lead device; command the backup only when the lead is down and the backup is up. */
+/**
+ * Sticky leader/follower failover. Stay on the current leader. Switch only when that motor is down
+ * and the other motor is up.
+ */
 public final class LeaderFailover {
   private LeaderFailover() {}
 
-  public static boolean useBackup(boolean leadConnected, boolean backupConnected) {
-    return !leadConnected && backupConnected;
+  public static boolean nextUsingBackup(
+      boolean usingBackup, boolean leadConnected, boolean backupConnected) {
+    boolean currentConnected = usingBackup ? backupConnected : leadConnected;
+    boolean otherConnected = usingBackup ? leadConnected : backupConnected;
+    if (!currentConnected && otherConnected) {
+      return !usingBackup;
+    }
+    return usingBackup;
   }
 }

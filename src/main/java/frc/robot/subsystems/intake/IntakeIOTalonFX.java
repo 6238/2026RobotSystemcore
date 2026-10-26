@@ -33,8 +33,10 @@ public class IntakeIOTalonFX implements IntakeIO {
   private final CANcoder cancoder;
   private final TalonFX rollerTalon;
   private final TalonFX rollerFollowerTalon;
-  private final Follower follower =
+  private final Follower followLead =
       new Follower(IntakeConstants.ROLLER_MOTOR_ID, IntakeConstants.ROLLER_ALIGNMENT);
+  private final Follower followBackup =
+      new Follower(IntakeConstants.ROLLER_FOLLOWER_ID, IntakeConstants.ROLLER_ALIGNMENT);
   private final boolean opposed = IntakeConstants.ROLLER_ALIGNMENT == MotorAlignmentValue.Opposed;
 
   private final MotionMagicVoltage pivotPosition = new MotionMagicVoltage(0);
@@ -80,7 +82,7 @@ public class IntakeIOTalonFX implements IntakeIO {
     tryUntilOk(
         5, () -> rollerFollowerTalon.getConfigurator().apply(IntakeConstants.rollerConfig(), 0.25));
 
-    rollerFollowerTalon.setControl(follower);
+    rollerFollowerTalon.setControl(followLead);
 
     pivotAngle = pivotTalon.getPosition();
     pivotAngularVelocity = pivotTalon.getVelocity();
@@ -115,7 +117,8 @@ public class IntakeIOTalonFX implements IntakeIO {
 
     boolean leadConnected = leadConnectedDebounce.calculate(rollerTalon.isConnected());
     boolean backupConnected = backupConnectedDebounce.calculate(rollerFollowerTalon.isConnected());
-    boolean wantBackup = LeaderFailover.useBackup(leadConnected, backupConnected);
+    boolean wantBackup =
+        LeaderFailover.nextUsingBackup(usingBackup, leadConnected, backupConnected);
     if (wantBackup != usingBackup) {
       usingBackup = wantBackup;
       applyFollowerRole();
@@ -178,8 +181,10 @@ public class IntakeIOTalonFX implements IntakeIO {
   }
 
   private void applyFollowerRole() {
-    if (!usingBackup) {
-      rollerFollowerTalon.setControl(follower);
+    if (usingBackup) {
+      rollerTalon.setControl(followBackup);
+    } else {
+      rollerFollowerTalon.setControl(followLead);
     }
   }
 
